@@ -9,12 +9,14 @@ import com.vijay.account.repository.AccountTransactionRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AccountService {
 
     private static final String STATUS_APPLIED = "APPLIED";
@@ -25,12 +27,17 @@ public class AccountService {
     @Transactional
     public TransactionResponse applyTransaction(String accountId, TransactionRequest request, String traceId) {
         return accountTransactionRepository.findByEventId(request.eventId())
-                .map(transaction -> toTransactionResponse(transaction, STATUS_DUPLICATE))
+                .map(transaction -> {
+                    log.info("Duplicate transaction event received eventId={} accountId={}", request.eventId(), accountId);
+                    return toTransactionResponse(transaction, STATUS_DUPLICATE);
+                })
                 .orElseGet(() -> saveTransaction(accountId, request, traceId));
     }
 
     @Transactional(readOnly = true)
     public AccountBalanceResponse getBalance(String accountId, String traceId) {
+        log.info("Balance lookup requested accountId={}", accountId);
+
         return new AccountBalanceResponse(
                 accountId,
                 calculateBalance(accountId),
@@ -70,13 +77,23 @@ public class AccountService {
                 .build();
 
         try {
-            return toTransactionResponse(
-                    accountTransactionRepository.save(transaction),
-                    STATUS_APPLIED
+            AccountTransaction savedTransaction = accountTransactionRepository.save(transaction);
+            log.info(
+                    "Transaction applied eventId={} accountId={} type={} amount={} currency={}",
+                    savedTransaction.getEventId(),
+                    savedTransaction.getAccountId(),
+                    savedTransaction.getType(),
+                    savedTransaction.getAmount(),
+                    savedTransaction.getCurrency()
             );
+
+            return toTransactionResponse(savedTransaction, STATUS_APPLIED);
         } catch (DataIntegrityViolationException ex) {
             return accountTransactionRepository.findByEventId(request.eventId())
-                    .map(existingTransaction -> toTransactionResponse(existingTransaction, STATUS_DUPLICATE))
+                    .map(existingTransaction -> {
+                        log.info("Duplicate transaction event received eventId={} accountId={}", request.eventId(), accountId);
+                        return toTransactionResponse(existingTransaction, STATUS_DUPLICATE);
+                    })
                     .orElseThrow(() -> ex);
         }
     }

@@ -19,6 +19,11 @@ public interface AccountTransactionRepository extends JpaRepository<AccountTrans
 
     List<AccountTransaction> findTop10ByAccountIdOrderByEventTimestampDesc(String accountId);
 
+    long countByType(TransactionType type);
+
+    @Query("select count(distinct transaction.accountId) from AccountTransaction transaction")
+    long countDistinctAccountIds();
+
     @Query("""
             select coalesce(sum(transaction.amount), 0)
             from AccountTransaction transaction
